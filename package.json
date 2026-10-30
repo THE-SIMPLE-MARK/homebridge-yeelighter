@@ -1,6 +1,6 @@
 {
-  "name": "homebridge-yeelighter",
-  "displayName": "Yeelighter Custom",
+  "name": "@the-simple-mark/homebridge-yeelighter",
+  "displayName": "Yeelighter",
   "version": "2.16.1-local.1",
   "description": "Yeelight support for Homebridge with particular support of ceiling lights",
   "license": "MIT",
@@ -21,7 +21,7 @@
     "GuangCan",
     "Galaxy"
   ],
-  "author": "Thomas Kroeber",
+  "author": "Thomas Kroeber and @THE-SIMPLE-MARK",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/THE-SIMPLE-MARK/homebridge-yeelighter.git"

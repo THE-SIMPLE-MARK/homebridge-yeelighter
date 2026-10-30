@@ -6,4 +6,4 @@ export const PLATFORM_NAME = "Yeelighter";
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = "homebridge-yeelighter";
+export const PLUGIN_NAME = "@the-simple-mark/homebridge-yeelighter";
