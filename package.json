@@ -1,7 +1,7 @@
 {
   "name": "@the-simple-mark/homebridge-yeelighter",
   "displayName": "Yeelighter",
-  "version": "2.16.1-local.1",
+  "version": "2.16.1-custom.1",
   "description": "Yeelight support for Homebridge with particular support of ceiling lights",
   "license": "MIT",
   "keywords": [
