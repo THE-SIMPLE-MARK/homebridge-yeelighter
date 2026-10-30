@@ -432,7 +432,10 @@ export class LightService {
       } catch (error) {
         this.warn("Color update failed", error);
       }
-    }, 120);
+    // A HomeKit colour-wheel drag emits many independent Hue/Saturation writes.
+    // Yeelight devices enforce a strict client command quota, so wait until the
+    // drag settles before sending its final HSV value.
+    }, 500);
   }
 
   protected updateColorFromCT(value: number) {
