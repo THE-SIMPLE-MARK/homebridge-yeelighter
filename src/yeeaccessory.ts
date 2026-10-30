@@ -44,17 +44,6 @@ interface Deferred<T> {
   timestamp: number;
 }
 
-interface QueuedCommand {
-  method: string;
-  parameters: Array<string | number | boolean>;
-  resolve: () => void;
-  reject: (error: Error) => void;
-}
-
-const COMMAND_BURST_SIZE = 3;
-const COMMAND_INTERVAL_MS = 1500;
-const COALESCED_COMMANDS = new Set(["set_hsv", "bg_set_hsv"]);
-
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutError = new Error("__timeout__")): Promise<T> {
   // create a promise that rejects in milliseconds
   const timeout = new Promise<never>((_resolve, reject) => {
@@ -88,10 +77,6 @@ export class YeeAccessory {
   private interval?: NodeJS.Timeout;
   private transactions = new Map<number, Deferred<void>>();
   private keepAlives = new Set<number>();
-  private commandTokens = COMMAND_BURST_SIZE;
-  private commandLastRefill = Date.now();
-  private commandQueue: QueuedCommand[] = [];
-  private commandTimer?: NodeJS.Timeout;
 
   private static handledAccessories = new Map<string, YeeAccessory>();
   private floodAlarm?: number;
@@ -409,13 +394,6 @@ export class YeeAccessory {
       item.reject(new Error("disconnected"));
       this.transactions.delete(key);
     }
-    for (const command of this.commandQueue.splice(0)) {
-      command.reject(new Error("disconnected"));
-    }
-    if (this.commandTimer) {
-      clearTimeout(this.commandTimer);
-      delete this.commandTimer;
-    }
   };
 
   private onDeviceError = (error) => {
@@ -484,72 +462,7 @@ export class YeeAccessory {
     return infoService;
   }
 
-  private sendHeartbeat() {
-    this.debug("sending heartbeat");
-    this.heartbeatTimestamp = Date.now();
-    void this.sendCommandPromise("get_prop", this.device.info.trackedAttributes).catch((error) => {
-      this.debug("heartbeat failed", error);
-    });
-  }
-
-  private refillCommandTokens() {
-    const now = Date.now();
-    const elapsed = now - this.commandLastRefill;
-    const newTokens = Math.floor(elapsed / COMMAND_INTERVAL_MS);
-    if (newTokens > 0) {
-      this.commandTokens = Math.min(COMMAND_BURST_SIZE, this.commandTokens + newTokens);
-      this.commandLastRefill += newTokens * COMMAND_INTERVAL_MS;
-    }
-  }
-
-  private processCommandQueue = () => {
-    if (this.commandTimer) {
-      clearTimeout(this.commandTimer);
-    }
-    delete this.commandTimer;
-    this.refillCommandTokens();
-    while (this.commandTokens > 0 && this.commandQueue.length > 0) {
-      const command = this.commandQueue.shift();
-      if (!command) break;
-      this.commandTokens--;
-      this.sendCommandNow(command.method, command.parameters, command.resolve, command.reject);
-    }
-    if (this.commandQueue.length > 0) {
-      const wait = Math.max(1, COMMAND_INTERVAL_MS - (Date.now() - this.commandLastRefill));
-      this.commandTimer = setTimeout(this.processCommandQueue, wait);
-    }
-  };
-
-  private enqueueCommand(command: QueuedCommand) {
-    if (COALESCED_COMMANDS.has(command.method)) {
-      const queued = this.commandQueue.find((item) => item.method === command.method);
-      if (queued) {
-        queued.parameters = command.parameters;
-        const resolve = queued.resolve;
-        const reject = queued.reject;
-        queued.resolve = () => {
-          resolve();
-          command.resolve();
-        };
-        queued.reject = (error) => {
-          reject(error);
-          command.reject(error);
-        };
-      } else {
-        this.commandQueue.push(command);
-      }
-    } else {
-      this.commandQueue.push(command);
-    }
-    this.processCommandQueue();
-  }
-
-  private sendCommandNow(
-    method: string,
-    parameters: Array<string | number | boolean>,
-    resolve: () => void,
-    reject: (error: Error) => void
-  ) {
+  public sendCommand(method: string, parameters: Array<string | number | boolean>) {
     if (!this.connected) {
       this.warn("send command but device doesn't seem connected");
     }
@@ -561,14 +474,22 @@ export class YeeAccessory {
     this.debug(`sendCommand(${id}, ${method}, ${JSON.stringify(parameters)})`);
     this.device.sendCommand({ id, method, params: parameters });
     this.lastCommandId = id;
-    const timestamp = Date.now();
-    this.transactions.set(id, { resolve, reject, timestamp });
-    this.debug(`sent command ${id}: ${method}`, parameters);
+    return id;
   }
 
-  sendCommandPromise(method: string, parameters: Array<string | number | boolean>): Promise<void> {
+  private sendHeartbeat() {
+    this.debug("sending heartbeat");
+    this.heartbeatTimestamp = Date.now();
+    const id = this.sendCommand("get_prop", this.device.info.trackedAttributes);
+    this.keepAlives.add(id);
+  }
+
+  async sendCommandPromise(method: string, parameters: Array<string | number | boolean>): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.enqueueCommand({ method, parameters, resolve, reject });
+      const timestamp = Date.now();
+      const id = this.sendCommand(method, parameters);
+      this.debug(`sent command ${id}: ${method}`, parameters);
+      this.transactions.set(id, { resolve, reject, timestamp });
     });
   }
 
