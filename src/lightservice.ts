@@ -146,6 +146,17 @@ export interface LightServiceParameters {
 }
 
 /**
+ * HomeKit permits hue 360, while Yeelight's HSV protocol permits 0 through
+ * 359 only. Both values mean red, so use Yeelight's canonical representation.
+ * The protocol also expects integer HSV values.
+ */
+function normalizeHSV(hue: number, sat: number) {
+  const normalizedHue = ((Math.round(hue) % 360) + 360) % 360;
+  const normalizedSat = Math.min(100, Math.max(0, Math.round(sat)));
+  return { hue: normalizedHue, sat: normalizedSat };
+}
+
+/**
  * Base class for services representing a light. This is a mixin class that is
  * used by the concrete light services.
  */
@@ -403,9 +414,10 @@ export class LightService {
       try {
         const attributes = await this.attributes();
         if (generation !== this.hsvGeneration) return;
-        const hue = this.lastHue ?? this.hsvDesired?.hue ?? (prefix === "bg_" ? attributes.bg_hue : attributes.hue);
-        const sat = this.lastSat ?? this.hsvDesired?.sat ?? (prefix === "bg_" ? attributes.bg_sat : attributes.sat);
-        if (!Number.isFinite(hue) || !Number.isFinite(sat)) return;
+        const requestedHue = this.lastHue ?? this.hsvDesired?.hue ?? (prefix === "bg_" ? attributes.bg_hue : attributes.hue);
+        const requestedSat = this.lastSat ?? this.hsvDesired?.sat ?? (prefix === "bg_" ? attributes.bg_sat : attributes.sat);
+        if (!Number.isFinite(requestedHue) || !Number.isFinite(requestedSat)) return;
+        const { hue, sat } = normalizeHSV(requestedHue, requestedSat);
         await this.ensurePowerMode(POWERMODE_HSV, prefix);
         if (generation !== this.hsvGeneration) return;
         delete this.lastHue;

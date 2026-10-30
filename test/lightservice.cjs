@@ -34,6 +34,11 @@ function fixture() {
   await wait(160);
   assert.deepEqual(s.calls.at(-1), ["set_hsv", [0, 0]]);
   assert.equal(s.calls.length, 3);
+  s.lastHue = 360;
+  s.lastSat = 100;
+  await s.setHSV();
+  await wait(160);
+  assert.deepEqual(s.calls.at(-1), ["set_hsv", [0, 100]]);
   s = fixture();
   for (let hue = 1; hue <= 20; hue++) {
     s.lastHue = hue;
@@ -80,7 +85,7 @@ function fixture() {
   await wait(160);
   assert.deepEqual(s.calls, [["bg_set_hsv", [0, 50]]]);
   console.log(
-    "PASS: hue-only, saturation-only, zero values, burst coalescing, power-off cancellation, in-flight final color, background fallback."
+    "PASS: hue-only, saturation-only, 360-degree red normalization, burst coalescing, power-off cancellation, in-flight final color, background fallback."
   );
 })().catch((e) => {
   console.error(e);
