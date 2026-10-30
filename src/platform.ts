@@ -41,6 +41,7 @@ export class YeelighterPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
   private agent: Discovery;
   private recentAccessories: Map<string, number> = new Map();
+  private discoveryInterval?: NodeJS.Timeout;
 
   constructor(
     public readonly log: Logger,
@@ -51,6 +52,10 @@ export class YeelighterPlatform implements DynamicPlatformPlugin {
     this.agent = new Discovery();
     this.agent.on("started", () => {
       this.log.debug("** Discovery Started **");
+      // A light may still be waking up when Homebridge starts. Repeat the
+      // multicast probe so a late response or an address change is recovered
+      // without requiring the light to be power-cycled.
+      this.discoveryInterval = setInterval(() => this.agent.discover(), 30_000);
     });
     this.agent.on("didDiscoverDevice", this.onDeviceDiscovery);
     // When this event is fired it means Homebridge has restored all cached accessories from disk.
@@ -61,6 +66,7 @@ export class YeelighterPlatform implements DynamicPlatformPlugin {
       this.log.debug("Executed didFinishLaunching callback");
       this.agent.listen();
       this.addHardCodedAccessories();
+      this.restoreCachedAccessories();
     });
   }
 
@@ -83,6 +89,22 @@ export class YeelighterPlatform implements DynamicPlatformPlugin {
 
     // add the restored accessory to the accessories cache so we can track if it has already been registered
     this.accessories.push(accessory);
+  }
+
+  /**
+   * Cached accessories contain the most recently discovered address. Reuse it
+   * immediately rather than waiting for an SSDP response that some lights do
+   * not send until they are power-cycled.
+   */
+  private restoreCachedAccessories() {
+    for (const accessory of this.accessories) {
+      const deviceInfo = accessory.context?.device as DeviceInfo | undefined;
+      if (!deviceInfo?.id || accessory.UUID !== this.api.hap.uuid.generate(deviceInfo.id)) {
+        continue;
+      }
+      this.log.debug(`Restoring cached device ${deviceInfo.id} at ${deviceInfo.location}`);
+      this.onDeviceDiscovery(deviceInfo);
+    }
   }
 
   // called when a Yeelight has responded to the discovery query
